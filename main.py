@@ -16,7 +16,7 @@ import os
 
 # Konfiguration - Aus Umgebungsvariablen lesen
 PLAYLIST_URL = "https://onlineradiobox.com/at/kronehit1058/playlist"
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '8416243521:AAFGRcNA1bUL538mavZx_AQ25aDnt_b_a3Q')
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '8416243521:AAFRZt4PnQhkTA_QLUqgP9_H7JiPLZZZ2y8')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '7568927725')
 CHECK_INTERVAL = 300  # 5 Minuten in Sekunden
 
