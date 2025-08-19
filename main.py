@@ -3,7 +3,7 @@
 """
 Kronehit Duplicate Song Monitor
 Überwacht die Playlist von Kronehit und sendet Telegram-Nachrichten bei Wiederholungen
-zwischen 09:00 und 17:00 Uhr.
+zwischen 09:00 und 17:00 Uhr (Deutsche Zeit).
 """
 
 import requests
@@ -12,6 +12,7 @@ import time
 from datetime import datetime, time as dt_time
 import logging
 from typing import List, Dict, Set
+from zoneinfo import ZoneInfo
 
 # Konfiguration
 PLAYLIST_URL = "https://onlineradiobox.com/at/kronehit1058/playlist"
@@ -20,7 +21,10 @@ TELEGRAM_CHAT_ID = '7568927725'
 CHECK_INTERVAL = 180  # 3 Minuten in Sekunden
 DUPLICATE_CHECK_INTERVAL = 180  # 3 Minuten nach Duplikat-Fund
 
-# Zeitfenster für Duplikatsprüfung
+# Deutsche Zeitzone
+GERMAN_TZ = ZoneInfo("Europe/Berlin")
+
+# Zeitfenster für Duplikatsprüfung (Deutsche Zeit)
 MONITOR_START_TIME = dt_time(9, 0)   # 09:00
 MONITOR_END_TIME = dt_time(17, 0)    # 17:00
 END_NOTIFICATION_TIME = dt_time(17, 0)  # 17:00 für Tagesabschluss-Nachricht
@@ -35,6 +39,16 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def get_german_time() -> datetime:
+    """
+    Gibt die aktuelle Zeit in deutscher Zeitzone zurück.
+    
+    Returns:
+        datetime: Aktuelle Zeit in Europa/Berlin Zeitzone
+    """
+    return datetime.now(GERMAN_TZ)
 
 
 def send_telegram_message(message: str) -> bool:
@@ -147,20 +161,22 @@ def fetch_playlist() -> List[Dict[str, str]]:
 
 def parse_song_time(time_str: str) -> datetime:
     """
-    Parst die Zeit eines Songs zu einem datetime-Objekt.
+    Parst die Zeit eines Songs zu einem datetime-Objekt in deutscher Zeitzone.
     
     Args:
         time_str (str): Zeit-String (z.B. "14:30" oder "14:30:15")
         
     Returns:
-        datetime: Datetime-Objekt mit heutigem Datum
+        datetime: Datetime-Objekt mit heutigem Datum in deutscher Zeitzone
     """
     try:
         # Verschiedene Zeitformate berücksichtigen
         for fmt in ['%H:%M:%S', '%H:%M']:
             try:
                 time_obj = datetime.strptime(time_str.strip(), fmt)
-                return datetime.combine(datetime.now().date(), time_obj.time())
+                # Erstelle datetime in deutscher Zeitzone
+                german_time = get_german_time()
+                return datetime.combine(german_time.date(), time_obj.time(), GERMAN_TZ)
             except ValueError:
                 continue
         
@@ -169,12 +185,13 @@ def parse_song_time(time_str: str) -> datetime:
         if len(parts) >= 2:
             hour = int(parts[0])
             minute = int(parts[1])
-            return datetime.combine(datetime.now().date(), dt_time(hour, minute))
+            german_time = get_german_time()
+            return datetime.combine(german_time.date(), dt_time(hour, minute), GERMAN_TZ)
             
     except (ValueError, IndexError) as e:
         logger.warning(f"Fehler beim Parsen der Zeit '{time_str}': {e}")
     
-    return datetime.now()
+    return get_german_time()
 
 
 def is_within_monitor_hours(song_datetime: datetime) -> bool:
@@ -241,18 +258,19 @@ def format_duplicate_message(duplicate: Dict[str, str]) -> str:
         str: Formatierte Nachricht
     """
     previous_times_str = ", ".join(duplicate['previous_times'])
+    german_time = get_german_time()
     
     message = f"""🚨 <b>DUPLIKAT GEFUNDEN!</b> 🚨
 
 <b>Song:</b> {duplicate['artist']} - {duplicate['title']}
 <b>Vorherige Zeit(en):</b> {previous_times_str}
 <b>Aktuelle Zeit:</b> {duplicate['current_time']}
-
+<b>Deutsche Zeit:</b> {german_time.strftime('%H:%M:%S')}
 
 🔥 <b>RUF SCHNELL KRONEHIT AN!</b> 🔥
 📞 Aktualisierungszeit auf alle 3 Minuten ändern!
 
-⏰ <i>Überwachung: 09:00 - 17:00 Uhr</i>
+⏰ <i>Überwachung: 09:00 - 17:00 Uhr (Deutsche Zeit)</i>
 🎯 <i>Du bist der Erste, der es weiß!</i>"""
 
     return message
@@ -263,7 +281,7 @@ def main_loop():
     Hauptschleife des Monitoring-Programms.
     """
     logger.info("Kronehit Duplicate Song Monitor gestartet")
-    logger.info(f"Überwachungszeiten: {MONITOR_START_TIME.strftime('%H:%M')} - {MONITOR_END_TIME.strftime('%H:%M')}")
+    logger.info(f"Überwachungszeiten: {MONITOR_START_TIME.strftime('%H:%M')} - {MONITOR_END_TIME.strftime('%H:%M')} (Deutsche Zeit)")
     logger.info(f"Check-Interval: {CHECK_INTERVAL} Sekunden")
     
     # Status-Variablen für tägliche Benachrichtigungen
@@ -271,11 +289,17 @@ def main_loop():
     end_notification_sent_today = False
     duplicates_found_today = False
     current_check_interval = CHECK_INTERVAL
-    last_date = datetime.now().date()
+    last_date = get_german_time().date()
     
     # Teste Telegram-Verbindung
     logger.info("Teste Telegram-Verbindung...")
-    startup_message = "🚀 <b>Kronehit Monitor gestartet!</b>\n\n📊 System läuft und überwacht 24/7\n⏰ Benachrichtigungen: 09:00 (Start) & 17:10 (Ende)"
+    german_time = get_german_time()
+    startup_message = f"""🚀 <b>Kronehit Monitor gestartet!</b>
+
+📊 System läuft und überwacht 24/7
+⏰ Benachrichtigungen: 09:00 (Start) & 17:10 (Ende)
+🕐 Deutsche Zeit: {german_time.strftime('%H:%M:%S')}
+🌍 Zeitzone: Europe/Berlin"""
     telegram_works = send_telegram_message(startup_message)
     
     if not telegram_works:
@@ -283,20 +307,25 @@ def main_loop():
     
     while True:
         try:
-            current_time = datetime.now()
+            # Verwende deutsche Zeit für alle Zeitberechnungen
+            current_time = get_german_time()
             current_date = current_time.date()
             current_time_only = current_time.time()
+            
+            # Debug-Log alle 30 Minuten
+            if current_time.minute % 30 == 0 and current_time.second < 30:
+                logger.info(f"Deutsche Zeit: {current_time.strftime('%H:%M:%S')} | Server Zeit: {datetime.now().strftime('%H:%M:%S')}")
             
             # Neuer Tag? Reset der Status-Variablen
             if current_date != last_date:
                 start_notification_sent_today = False
                 end_notification_sent_today = False
                 duplicates_found_today = False
-                current_check_interval = CHECK_INTERVAL  # Zurück auf 5 Minuten
+                current_check_interval = CHECK_INTERVAL  # Zurück auf 3 Minuten
                 last_date = current_date
-                logger.info(f"Neuer Tag: {current_date}")
+                logger.info(f"Neuer Tag (Deutsche Zeit): {current_date}")
             
-            # 09:00 Start-Benachrichtigung
+            # 09:00 Start-Benachrichtigung (Deutsche Zeit)
             if (current_time_only >= MONITOR_START_TIME and 
                 current_time_only < dt_time(9, 5) and  # Nur bis 09:05
                 not start_notification_sent_today and telegram_works):
@@ -304,7 +333,8 @@ def main_loop():
                 start_message = f"""🌅 <b>Guten Morgen!</b>
 
 📅 <b>Datum:</b> {current_date.strftime('%d.%m.%Y')}
-⏰ <b>Zeit:</b> {current_time.strftime('%H:%M:%S')}
+⏰ <b>Deutsche Zeit:</b> {current_time.strftime('%H:%M:%S')}
+🌍 <b>Zeitzone:</b> Europe/Berlin
 
 🎵 <b>Kronehit Duplikat-Überwachung startet!</b>
 🔍 Ab jetzt gilt es, Duplikate zwischen 09:00-17:00 zu finden!
@@ -316,7 +346,7 @@ def main_loop():
                 logger.info("Start-Benachrichtigung für heute gesendet")
             
             # 17:10 Ende-Benachrichtigung (nur wenn keine Duplikate gefunden)
-            if (current_time_only >= END_NOTIFICATION_TIME and 
+            if (current_time_only >= dt_time(17, 10) and  # 17:10 für Ende-Nachricht
                 current_time_only < dt_time(17, 15) and  # Nur bis 17:15
                 not end_notification_sent_today and 
                 not duplicates_found_today and telegram_works):
@@ -324,7 +354,8 @@ def main_loop():
                 end_message = f"""🌅 <b>Tagesabschluss</b>
 
 📅 <b>Datum:</b> {current_date.strftime('%d.%m.%Y')}
-⏰ <b>Überwachungszeit:</b> 09:00 - 17:00 Uhr
+⏰ <b>Überwachungszeit:</b> 09:00 - 17:00 Uhr (Deutsche Zeit)
+🕐 <b>Aktuelle Zeit:</b> {current_time.strftime('%H:%M:%S')}
 
 ✅ <b>Heute war kein Duplikat dabei!</b>
 🎵 Kronehit hat heute keine Songs wiederholt.
@@ -335,9 +366,9 @@ def main_loop():
                 end_notification_sent_today = True
                 logger.info("Tagesabschluss-Benachrichtigung gesendet")
             
-            # Playlist nur während der Überwachungszeit prüfen (aber System läuft 24/7)
+            # Playlist nur während der Überwachungszeit prüfen (Deutsche Zeit)
             if MONITOR_START_TIME <= current_time_only <= MONITOR_END_TIME:
-                logger.info("Rufe Playlist ab...")
+                logger.info(f"Rufe Playlist ab... (Deutsche Zeit: {current_time.strftime('%H:%M:%S')})")
                 songs = fetch_playlist()
                 
                 if not songs:
@@ -368,7 +399,7 @@ def main_loop():
             else:
                 # Außerhalb der Überwachungszeit - weniger häufige Logs
                 if current_time.minute % 30 == 0:  # Alle 30 Minuten eine Info
-                    logger.info(f"Außerhalb Überwachungszeit ({current_time_only.strftime('%H:%M')}). Nächste Überwachung: 09:00")
+                    logger.info(f"Außerhalb Überwachungszeit (Deutsche Zeit: {current_time_only.strftime('%H:%M')}). Nächste Überwachung: 09:00")
             
             logger.info(f"Warte {current_check_interval} Sekunden bis zum nächsten Check...")
             time.sleep(current_check_interval)
@@ -376,7 +407,8 @@ def main_loop():
         except KeyboardInterrupt:
             logger.info("Monitor durch Benutzer gestoppt")
             if telegram_works:
-                stop_message = "⏹️ <b>Kronehit Monitor gestoppt</b>\n\n🔧 <i>System wurde manuell beendet</i>"
+                german_time = get_german_time()
+                stop_message = f"⏹️ <b>Kronehit Monitor gestoppt</b>\n\n🔧 <i>System wurde manuell beendet</i>\n🕐 <i>Deutsche Zeit: {german_time.strftime('%H:%M:%S')}</i>"
                 send_telegram_message(stop_message)
             break
         except Exception as e:
