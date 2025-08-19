@@ -23,7 +23,7 @@ DUPLICATE_CHECK_INTERVAL = 180  # 3 Minuten nach Duplikat-Fund
 # Zeitfenster für Duplikatsprüfung
 MONITOR_START_TIME = dt_time(9, 0)   # 09:00
 MONITOR_END_TIME = dt_time(17, 0)    # 17:00
-END_NOTIFICATION_TIME = dt_time(17, 10)  # 17:10 für Tagesabschluss-Nachricht
+END_NOTIFICATION_TIME = dt_time(17, 0)  # 17:00 für Tagesabschluss-Nachricht
 
 # Logging-Konfiguration
 logging.basicConfig(
@@ -245,8 +245,9 @@ def format_duplicate_message(duplicate: Dict[str, str]) -> str:
     message = f"""🚨 <b>DUPLIKAT GEFUNDEN!</b> 🚨
 
 <b>Song:</b> {duplicate['artist']} - {duplicate['title']}
-<b>Aktuelle Zeit:</b> {duplicate['current_time']}
 <b>Vorherige Zeit(en):</b> {previous_times_str}
+<b>Aktuelle Zeit:</b> {duplicate['current_time']}
+
 
 🔥 <b>RUF SCHNELL KRONEHIT AN!</b> 🔥
 📞 Aktualisierungszeit auf alle 3 Minuten ändern!
