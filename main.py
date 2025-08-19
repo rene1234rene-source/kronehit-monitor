@@ -21,7 +21,7 @@ CHECK_INTERVAL = 300  # 5 Minuten in Sekunden
 DUPLICATE_CHECK_INTERVAL = 180  # 3 Minuten nach Duplikat-Fund
 
 # Zeitfenster für Duplikatsprüfung
-MONITOR_START_TIME = dt_time(9, 0)   # 09:00
+MONITOR_START_TIME = dt_time(5, 0)   # 09:00
 MONITOR_END_TIME = dt_time(17, 0)    # 17:00
 END_NOTIFICATION_TIME = dt_time(17, 10)  # 17:10 für Tagesabschluss-Nachricht
 
