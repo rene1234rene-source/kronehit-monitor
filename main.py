@@ -3,7 +3,7 @@
 """
 Kronehit Duplicate Song Monitor
 Überwacht die Playlist von Kronehit und sendet Telegram-Nachrichten bei Wiederholungen
-zwischen 09:00 und 17:00 Uhr (Deutsche Zeit).
+zwischen 09:00 und 17:00 Uhr (Deutsche Zeit) - NUR MONTAG BIS FREITAG.
 """
 
 import requests
@@ -29,6 +29,9 @@ MONITOR_START_TIME = dt_time(9, 0)   # 09:00
 MONITOR_END_TIME = dt_time(17, 0)    # 17:00
 END_NOTIFICATION_TIME = dt_time(17, 0)  # 17:00 für Tagesabschluss-Nachricht
 
+# Nur Werktage (Montag=0 bis Freitag=4)
+WORKING_DAYS = [0, 1, 2, 3, 4]  # Montag bis Freitag
+
 # Logging-Konfiguration
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +52,38 @@ def get_german_time() -> datetime:
         datetime: Aktuelle Zeit in Europa/Berlin Zeitzone
     """
     return datetime.now(GERMAN_TZ)
+
+
+def is_working_day(dt: datetime = None) -> bool:
+    """
+    Prüft, ob der gegebene Tag ein Werktag (Mo-Fr) ist.
+    
+    Args:
+        dt (datetime, optional): Zu prüfendes Datum. Defaults to None (heute).
+        
+    Returns:
+        bool: True wenn Werktag (Mo-Fr), False bei Wochenende
+    """
+    if dt is None:
+        dt = get_german_time()
+    return dt.weekday() in WORKING_DAYS
+
+
+def get_weekday_name(weekday: int) -> str:
+    """
+    Gibt den deutschen Namen des Wochentags zurück.
+    
+    Args:
+        weekday (int): Wochentag (0=Montag, 6=Sonntag)
+        
+    Returns:
+        str: Deutscher Name des Wochentags
+    """
+    weekday_names = {
+        0: "Montag", 1: "Dienstag", 2: "Mittwoch", 
+        3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"
+    }
+    return weekday_names.get(weekday, "Unbekannt")
 
 
 def send_telegram_message(message: str) -> bool:
@@ -270,7 +305,7 @@ def format_duplicate_message(duplicate: Dict[str, str]) -> str:
 🔥 <b>RUF SCHNELL KRONEHIT AN!</b> 🔥
 📞 Aktualisierungszeit auf alle 3 Minuten ändern!
 
-⏰ <i>Überwachung: 09:00 - 17:00 Uhr (Deutsche Zeit)</i>
+⏰ <i>Überwachung: 09:00 - 17:00 Uhr (Mo-Fr)</i>
 🎯 <i>Du bist der Erste, der es weiß!</i>"""
 
     return message
@@ -280,13 +315,15 @@ def main_loop():
     """
     Hauptschleife des Monitoring-Programms.
     """
-    logger.info("Kronehit Duplicate Song Monitor gestartet")
+    logger.info("Kronehit Duplicate Song Monitor gestartet (Nur Werktage)")
     logger.info(f"Überwachungszeiten: {MONITOR_START_TIME.strftime('%H:%M')} - {MONITOR_END_TIME.strftime('%H:%M')} (Deutsche Zeit)")
+    logger.info(f"Überwachungstage: Montag bis Freitag")
     logger.info(f"Check-Interval: {CHECK_INTERVAL} Sekunden")
     
     # Status-Variablen für tägliche Benachrichtigungen
     start_notification_sent_today = False
     end_notification_sent_today = False
+    weekend_notification_sent = False
     duplicates_found_today = False
     current_check_interval = CHECK_INTERVAL
     last_date = get_german_time().date()
@@ -294,12 +331,28 @@ def main_loop():
     # Teste Telegram-Verbindung
     logger.info("Teste Telegram-Verbindung...")
     german_time = get_german_time()
-    startup_message = f"""🚀 <b>Kronehit Monitor gestartet!</b>
+    weekday_name = get_weekday_name(german_time.weekday())
+    
+    if is_working_day(german_time):
+        startup_message = f"""🚀 <b>Kronehit Monitor gestartet!</b>
 
-📊 System läuft und überwacht 24/7
+📅 <b>{weekday_name}</b>, {german_time.strftime('%d.%m.%Y')}
+📊 System läuft und überwacht Mo-Fr
 ⏰ Benachrichtigungen: 09:00 (Start) & 17:10 (Ende)
 🕐 Deutsche Zeit: {german_time.strftime('%H:%M:%S')}
-🌍 Zeitzone: Europe/Berlin"""
+🌍 Zeitzone: Europe/Berlin
+
+💼 <i>Bereit für den Arbeitstag!</i>"""
+    else:
+        startup_message = f"""🏖️ <b>Wochenende erkannt!</b>
+
+📅 <b>{weekday_name}</b>, {german_time.strftime('%d.%m.%Y')}
+😴 System läuft im Wochenend-Modus
+⏰ Nächste Überwachung: Montag 09:00
+🕐 Deutsche Zeit: {german_time.strftime('%H:%M:%S')}
+
+🌴 <i>Entspanntes Wochenende!</i>"""
+    
     telegram_works = send_telegram_message(startup_message)
     
     if not telegram_works:
@@ -311,19 +364,32 @@ def main_loop():
             current_time = get_german_time()
             current_date = current_time.date()
             current_time_only = current_time.time()
+            current_weekday = current_time.weekday()
+            weekday_name = get_weekday_name(current_weekday)
             
             # Debug-Log alle 30 Minuten
             if current_time.minute % 30 == 0 and current_time.second < 30:
-                logger.info(f"Deutsche Zeit: {current_time.strftime('%H:%M:%S')} | Server Zeit: {datetime.now().strftime('%H:%M:%S')}")
+                logger.info(f"Deutsche Zeit: {current_time.strftime('%H:%M:%S')} | {weekday_name} | Werktag: {is_working_day(current_time)}")
             
             # Neuer Tag? Reset der Status-Variablen
             if current_date != last_date:
                 start_notification_sent_today = False
                 end_notification_sent_today = False
+                weekend_notification_sent = False
                 duplicates_found_today = False
                 current_check_interval = CHECK_INTERVAL  # Zurück auf 3 Minuten
                 last_date = current_date
-                logger.info(f"Neuer Tag (Deutsche Zeit): {current_date}")
+                logger.info(f"Neuer Tag (Deutsche Zeit): {current_date} - {weekday_name}")
+            
+            # Prüfen, ob heute ein Werktag ist
+            if not is_working_day(current_time):
+                # Wochenende - nur alle 2 Stunden eine Info
+                if current_time.hour % 2 == 0 and current_time.minute < 10:
+                    logger.info(f"Wochenende ({weekday_name}) - System pausiert. Nächste Überwachung: Montag 09:00")
+                time.sleep(3600)  # 1 Stunde warten am Wochenende
+                continue
+            
+            # Ab hier nur Werktage (Mo-Fr)
             
             # 09:00 Start-Benachrichtigung (Deutsche Zeit)
             if (current_time_only >= MONITOR_START_TIME and 
@@ -332,7 +398,7 @@ def main_loop():
                 
                 start_message = f"""🌅 <b>Guten Morgen!</b>
 
-📅 <b>Datum:</b> {current_date.strftime('%d.%m.%Y')}
+📅 <b>{weekday_name}</b>, {current_date.strftime('%d.%m.%Y')}
 ⏰ <b>Deutsche Zeit:</b> {current_time.strftime('%H:%M:%S')}
 🌍 <b>Zeitzone:</b> Europe/Berlin
 
@@ -345,22 +411,59 @@ def main_loop():
                 start_notification_sent_today = True
                 logger.info("Start-Benachrichtigung für heute gesendet")
             
-            # 17:10 Ende-Benachrichtigung (nur wenn keine Duplikate gefunden)
+            # 17:10 Ende-Benachrichtigung
             if (current_time_only >= dt_time(17, 10) and  # 17:10 für Ende-Nachricht
                 current_time_only < dt_time(17, 15) and  # Nur bis 17:15
-                not end_notification_sent_today and 
-                not duplicates_found_today and telegram_works):
+                not end_notification_sent_today and telegram_works):
                 
-                end_message = f"""🌅 <b>Tagesabschluss</b>
+                if current_weekday == 4:  # Freitag (0=Montag, 4=Freitag)
+                    # Freitag - Wochenend-Nachricht
+                    if not duplicates_found_today:
+                        end_message = f"""🎉 <b>Schönes Wochenende!</b>
 
-📅 <b>Datum:</b> {current_date.strftime('%d.%m.%Y')}
+📅 <b>Freitag</b>, {current_date.strftime('%d.%m.%Y')}
+⏰ <b>Überwachungszeit:</b> 09:00 - 17:00 Uhr
+🕐 <b>Aktuelle Zeit:</b> {current_time.strftime('%H:%M:%S')}
+
+✅ <b>Heute war kein Duplikat dabei!</b>
+🎵 Kronehit hat heute keine Songs wiederholt.
+
+🏖️ <b>Entspanntes Wochenende!</b>
+📅 <b>Nächsten Montag geht es wieder los!</b>
+
+🌴 <i>Bis Montag - System pausiert am Wochenende.</i>"""
+                    else:
+                        end_message = f"""🎉 <b>Schönes Wochenende!</b>
+
+📅 <b>Freitag</b>, {current_date.strftime('%d.%m.%Y')}
+⏰ <b>Überwachungszeit:</b> 09:00 - 17:00 Uhr beendet
+🚨 <b>Heute wurden Duplikate gefunden!</b>
+
+🏖️ <b>Entspanntes Wochenende!</b>
+📅 <b>Nächsten Montag geht es wieder los!</b>
+
+🌴 <i>Bis Montag - System pausiert am Wochenende.</i>"""
+                else:
+                    # Montag bis Donnerstag - normale Tagesabschluss-Nachricht
+                    if not duplicates_found_today:
+                        end_message = f"""🌅 <b>Tagesabschluss</b>
+
+📅 <b>{weekday_name}</b>, {current_date.strftime('%d.%m.%Y')}
 ⏰ <b>Überwachungszeit:</b> 09:00 - 17:00 Uhr (Deutsche Zeit)
 🕐 <b>Aktuelle Zeit:</b> {current_time.strftime('%H:%M:%S')}
 
 ✅ <b>Heute war kein Duplikat dabei!</b>
 🎵 Kronehit hat heute keine Songs wiederholt.
 
-🌙 <i>Vielleicht morgen... System läuft weiter!</i>"""
+🌙 <i>Morgen früh geht's weiter - System läuft weiter!</i>"""
+                    else:
+                        end_message = f"""🌅 <b>Tagesabschluss</b>
+
+📅 <b>{weekday_name}</b>, {current_date.strftime('%d.%m.%Y')}
+⏰ <b>Überwachungszeit:</b> 09:00 - 17:00 Uhr beendet
+🚨 <b>Heute wurden Duplikate gefunden!</b>
+
+🌙 <i>Morgen früh geht's weiter - System läuft weiter!</i>"""
                 
                 send_telegram_message(end_message)
                 end_notification_sent_today = True
@@ -368,7 +471,7 @@ def main_loop():
             
             # Playlist nur während der Überwachungszeit prüfen (Deutsche Zeit)
             if MONITOR_START_TIME <= current_time_only <= MONITOR_END_TIME:
-                logger.info(f"Rufe Playlist ab... (Deutsche Zeit: {current_time.strftime('%H:%M:%S')})")
+                logger.info(f"Rufe Playlist ab... ({weekday_name}, Deutsche Zeit: {current_time.strftime('%H:%M:%S')})")
                 songs = fetch_playlist()
                 
                 if not songs:
@@ -399,7 +502,7 @@ def main_loop():
             else:
                 # Außerhalb der Überwachungszeit - weniger häufige Logs
                 if current_time.minute % 30 == 0:  # Alle 30 Minuten eine Info
-                    logger.info(f"Außerhalb Überwachungszeit (Deutsche Zeit: {current_time_only.strftime('%H:%M')}). Nächste Überwachung: 09:00")
+                    logger.info(f"Außerhalb Überwachungszeit ({weekday_name}, Deutsche Zeit: {current_time_only.strftime('%H:%M')}). Nächste Überwachung: 09:00")
             
             logger.info(f"Warte {current_check_interval} Sekunden bis zum nächsten Check...")
             time.sleep(current_check_interval)
@@ -408,7 +511,8 @@ def main_loop():
             logger.info("Monitor durch Benutzer gestoppt")
             if telegram_works:
                 german_time = get_german_time()
-                stop_message = f"⏹️ <b>Kronehit Monitor gestoppt</b>\n\n🔧 <i>System wurde manuell beendet</i>\n🕐 <i>Deutsche Zeit: {german_time.strftime('%H:%M:%S')}</i>"
+                weekday_name = get_weekday_name(german_time.weekday())
+                stop_message = f"⏹️ <b>Kronehit Monitor gestoppt</b>\n\n🔧 <i>System wurde manuell beendet</i>\n📅 <i>{weekday_name}</i>\n🕐 <i>Deutsche Zeit: {german_time.strftime('%H:%M:%S')}</i>"
                 send_telegram_message(stop_message)
             break
         except Exception as e:
